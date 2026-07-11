@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Accounting — 讓帳目自己對平</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#21261F;
+    --ink-soft:#5B6058;
+    --paper:#F7F3EA;
+    --paper-card:#FFFFFF;
+    --rule:#DCD5C4;
+    --primary:#D8572A;
+    --secondary:#DB7C26;
+    --balance:#3E6B4F;
+    --balance-bg:#E9F0E9;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{
+    font-family:'Space Grotesk',sans-serif;
+    letter-spacing:-0.01em;
+    line-height:1.15;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  a{color:inherit;text-decoration:none;}
+  img{max-width:100%;display:block;}
+  section{position:relative;}
+  .wrap{
+    max-width:1120px;
+    margin:0 auto;
+    padding:0 32px;
+  }
+  .rule-top{border-top:1px solid var(--rule);}
+
+  /* row-number margin device — literal ledger row numbering, not decoration */
+  .ledger-row{
+    display:grid;
+    grid-template-columns:56px 1fr;
+    gap:0;
+  }
+  .ledger-row .rowno{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;
+    color:var(--ink-soft);
+    padding-top:6px;
+    border-right:1px solid var(--rule);
+  }
+  .ledger-row .rowbody{padding-left:24px;}
+
+  /* ===== NAV ===== */
+  header{
+    position:sticky;top:0;z-index:50;
+    background:rgba(247,243,234,0.92);
+    backdrop-filter:blur(6px);
+    border-bottom:1px solid var(--rule);
+  }
+  nav.wrap{
+    display:flex;align-items:center;justify-content:space-between;
+    height:64px;
+  }
+  .logo{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;font-size:18px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .logo .dot{width:8px;height:8px;background:var(--primary);border-radius:1px;display:inline-block;}
+  .nav-cta{
+    background:var(--primary);color:#fff;
+    padding:9px 18px;font-size:14px;font-weight:600;
+    border-radius:2px;
+  }
+  .nav-cta:hover{background:#c14a20;}
+
+  /* ===== HERO ===== */
+  .hero{padding:88px 0 72px;}
+  .hero-grid{
+    display:grid;grid-template-columns:1.1fr 0.9fr;gap:56px;align-items:center;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;letter-spacing:0.08em;text-transform:uppercase;
+    color:var(--primary);font-weight:600;margin-bottom:18px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .eyebrow::before{content:'';width:20px;height:1px;background:var(--primary);}
+  .hero h1{
+    font-size:clamp(32px,4.2vw,52px);
+    font-weight:700;margin-bottom:22px;
+  }
+  .hero h1 em{
+    font-style:normal;color:var(--primary);
+  }
+  .hero p.lede{
+    font-size:18px;color:var(--ink-soft);max-width:480px;margin-bottom:32px;
+  }
+  .cta-row{display:flex;gap:14px;flex-wrap:wrap;}
+  .btn-primary{
+    background:var(--primary);color:#fff;
+    padding:14px 28px;font-size:15px;font-weight:600;
+    border-radius:2px;border:1px solid var(--primary);
+    transition:background .15s ease;
+  }
+  .btn-primary:hover{background:#c14a20;}
+  .btn-ghost{
+    padding:14px 28px;font-size:15px;font-weight:600;
+    border:1px solid var(--ink);border-radius:2px;
+    transition:background .15s ease,color .15s ease;
+  }
+  .btn-ghost:hover{background:var(--ink);color:#fff;}
+
+  /* ledger reconciliation widget — the signature element */
+  .ledger-card{
+    background:var(--paper-card);
+    border:1px solid var(--rule);
+    border-radius:4px;
+    box-shadow:0 24px 48px -24px rgba(33,38,35,0.25);
+    overflow:hidden;
+  }
+  .ledger-card .lc-head{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:14px 20px;border-bottom:1px solid var(--rule);
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink-soft);
+  }
+  .status-pill{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;
+    padding:4px 10px;border-radius:20px;
+    background:var(--balance-bg);color:var(--balance);
+    transition:opacity .3s ease;
+  }
+  .lc-body{padding:8px 0;}
+  .lc-row{
+    display:grid;grid-template-columns:1fr 100px;gap:12px;
+    padding:11px 20px;font-size:13.5px;
+    border-bottom:1px dashed var(--rule);
+  }
+  .lc-row:last-child{border-bottom:none;}
+  .lc-row .amt{font-family:'IBM Plex Mono',monospace;text-align:right;color:var(--ink);}
+  .lc-row.debit .amt{color:var(--primary);}
+  .lc-foot{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:16px 20px;background:#FBF9F4;border-top:1px solid var(--rule);
+  }
+  .lc-foot .label{font-size:12px;color:var(--ink-soft);}
+  .lc-foot .value{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:16px;}
+  .lc-foot .value.zero{color:var(--balance);}
+
+  /* ===== PAIN POINTS ===== */
+  .pain{padding:96px 0;}
+  .section-head{max-width:620px;margin-bottom:48px;}
+  .section-head .eyebrow{color:var(--ink-soft);}
+  .section-head .eyebrow::before{background:var(--ink-soft);}
+  .section-head h2{font-size:clamp(26px,3vw,36px);font-weight:700;}
+  .section-head p{color:var(--ink-soft);font-size:16px;margin-top:12px;max-width:560px;}
+
+  .pain-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
+    background:var(--rule);border:1px solid var(--rule);
+  }
+  .pain-item{
+    background:var(--paper);padding:28px 26px;
+  }
+  .pain-item .rowno{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--primary);
+    display:block;margin-bottom:14px;
+  }
+  .pain-item p{font-size:15px;color:var(--ink);font-weight:500;}
+  .pain-punch{
+    margin-top:36px;font-size:17px;font-weight:600;
+    border-left:3px solid var(--primary);padding-left:18px;
+    max-width:640px;
+  }
+
+  /* ===== SOLUTION (before/after) ===== */
+  .solution{padding:96px 0;background:var(--paper-card);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);}
+  .compare{
+    display:grid;grid-template-columns:1fr 1fr;gap:0;
+    border:1px solid var(--rule);
+  }
+  .compare-col{padding:32px;}
+  .compare-col.old{background:#F2EEE3;}
+  .compare-col.new{background:#FFF9F3;border-left:1px solid var(--rule);}
+  .compare-col h3{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;text-transform:uppercase;
+    letter-spacing:0.06em;color:var(--ink-soft);margin-bottom:20px;font-weight:600;
+  }
+  .compare-col.new h3{color:var(--primary);}
+  .flow-step{
+    display:flex;align-items:center;gap:12px;padding:11px 0;
+    font-size:14.5px;
+  }
+  .flow-step:not(:last-child){border-bottom:1px dashed var(--rule);}
+  .flow-step .mk{
+    width:18px;height:18px;border-radius:50%;flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:11px;
+  }
+  .old .mk{background:#DCD5C4;color:var(--ink-soft);}
+  .new .mk{background:var(--primary);color:#fff;}
+
+  /* ===== FEATURES ===== */
+  .features{padding:96px 0;}
+  .feature-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+    background:var(--rule);border:1px solid var(--rule);
+  }
+  .feature-card{
+    background:var(--paper-card);padding:30px 24px;min-height:170px;
+    display:flex;flex-direction:column;justify-content:space-between;
+  }
+  .feature-card .fnum{
+    font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--secondary);font-weight:600;
+  }
+  .feature-card h4{font-size:16px;font-weight:700;margin:14px 0 8px;font-family:'Space Grotesk',sans-serif;}
+  .feature-card p{font-size:13.5px;color:var(--ink-soft);}
+
+  /* ===== BENEFITS ===== */
+  .benefits{padding:96px 0;background:var(--ink);color:#F7F3EA;}
+  .benefits .section-head p{color:#B9BDB4;}
+  .benefits .section-head .eyebrow{color:var(--secondary);}
+  .benefits .section-head .eyebrow::before{background:var(--secondary);}
+  .benefit-grid{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:32px;
+  }
+  .benefit-item .num{
+    font-family:'Space Grotesk',sans-serif;font-size:40px;font-weight:700;color:var(--secondary);
+    margin-bottom:10px;
+  }
+  .benefit-item h4{font-size:15.5px;font-weight:600;margin-bottom:6px;}
+  .benefit-item p{font-size:13.5px;color:#9CA098;}
+
+  /* ===== WHY US ===== */
+  .whyus{padding:96px 0;}
+  .why-grid{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start;}
+  .why-list{display:flex;flex-direction:column;}
+  .why-list .item{
+    display:flex;gap:16px;padding:16px 0;border-bottom:1px solid var(--rule);
+  }
+  .why-list .item:first-child{padding-top:0;}
+  .why-list .check{
+    width:22px;height:22px;border-radius:50%;background:var(--balance-bg);color:var(--balance);
+    display:flex;align-items:center;justify-content:center;font-size:12px;flex:none;margin-top:2px;
+  }
+  .why-list .item h4{font-size:15.5px;font-weight:600;margin-bottom:3px;}
+  .why-list .item p{font-size:13.5px;color:var(--ink-soft);}
+
+  .stat-card{
+    background:var(--paper-card);border:1px solid var(--rule);padding:36px;border-radius:4px;
+  }
+  .stat-card .big{
+    font-family:'Space Grotesk',sans-serif;font-size:46px;font-weight:700;color:var(--primary);
+  }
+  .stat-card .cap{font-size:14px;color:var(--ink-soft);margin-top:6px;margin-bottom:26px;}
+  .stat-card .quote{font-size:15px;font-style:normal;border-left:3px solid var(--secondary);padding-left:16px;color:var(--ink);}
+  .stat-card .quote-by{font-size:12.5px;color:var(--ink-soft);margin-top:10px;font-family:'IBM Plex Mono',monospace;}
+
+  /* ===== TESTIMONIALS ===== */
+  .testi{padding:96px 0;background:var(--paper-card);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);}
+  .testi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);}
+  .testi-card{background:var(--paper-card);padding:30px 26px;}
+  .stars{color:var(--secondary);font-size:14px;letter-spacing:2px;margin-bottom:16px;}
+  .testi-card p{font-size:14.5px;color:var(--ink);margin-bottom:18px;}
+  .testi-who{font-size:12.5px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace;}
+
+  /* ===== FAQ ===== */
+  .faq{padding:96px 0;}
+  .faq-list{max-width:760px;}
+  .faq-item{border-bottom:1px solid var(--rule);}
+  .faq-q{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:22px 4px;cursor:pointer;font-size:16px;font-weight:600;
+    font-family:'Space Grotesk',sans-serif;
+  }
+  .faq-q .plus{font-family:'IBM Plex Mono',monospace;color:var(--primary);font-size:18px;transition:transform .2s ease;}
+  .faq-item.open .plus{transform:rotate(45deg);}
+  .faq-a{
+    max-height:0;overflow:hidden;transition:max-height .25s ease;
+    font-size:14.5px;color:var(--ink-soft);
+  }
+  .faq-a-inner{padding:0 4px 22px;max-width:640px;}
+  .faq-item.open .faq-a{max-height:200px;}
+
+  /* ===== FINAL CTA ===== */
+  .final-cta{
+    padding:100px 0;background:var(--primary);color:#fff;text-align:center;
+  }
+  .final-cta h2{font-size:clamp(28px,4vw,42px);font-weight:700;margin-bottom:16px;}
+  .final-cta p{font-size:17px;color:#FBDCCB;max-width:520px;margin:0 auto 36px;}
+  .final-cta .cta-row{justify-content:center;}
+  .final-cta .btn-primary{background:#fff;color:var(--primary);border-color:#fff;}
+  .final-cta .btn-primary:hover{background:#FBDCCB;}
+  .final-cta .btn-ghost{border-color:#fff;color:#fff;}
+  .final-cta .btn-ghost:hover{background:#fff;color:var(--primary);}
+  .final-cta .fine{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#FBDCCB;margin-top:20px;opacity:0.85;}
+
+  /* ===== FOOTER ===== */
+  footer{padding:40px 0;background:var(--ink);color:#9CA098;}
+  .footer-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;font-size:13px;}
+  .footer-links{display:flex;gap:24px;}
+  .footer-links a:hover{color:#fff;}
+
+  @media (max-width:860px){
+    .hero-grid,.why-grid,.compare{grid-template-columns:1fr;}
+    .pain-grid,.feature-grid{grid-template-columns:repeat(2,1fr);}
+    .benefit-grid{grid-template-columns:repeat(2,1fr);gap:28px;}
+    .testi-grid{grid-template-columns:1fr;}
+    .compare-col.new{border-left:none;border-top:1px solid var(--rule);}
+  }
+  @media (max-width:520px){
+    .pain-grid,.feature-grid,.benefit-grid{grid-template-columns:1fr;}
+    .cta-row{flex-direction:column;}
+    .btn-primary,.btn-ghost{text-align:center;}
+  }
+
+  @media (prefers-reduced-motion:reduce){
+    *{transition:none !important;animation:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <nav class="wrap">
+    <div class="logo"><span class="dot"></span>SQL ACCOUNTING</div>
+    <a href="#cta" class="nav-cta">預約免費 Demo</a>
+  </nav>
+</header>
+
+<!-- ===== HERO ===== -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow">為 Account Clerk 打造</div>
+      <h1>讓帳目<em>自己對平</em>，<br>不用你熬夜核對</h1>
+      <p class="lede">SQL Accounting 把開單、收付款、銀行對帳到財務報表整合成一套系統，減少重複輸入與人工核對，讓你準時下班。</p>
+      <div class="cta-row">
+        <a href="#cta" class="btn-primary">免費預約 Demo</a>
+        <a href="#faq" class="btn-ghost">先看常見問題</a>
+      </div>
+    </div>
+
+    <div class="ledger-card">
+      <div class="lc-head">
+        <span>BANK RECONCILIATION</span>
+        <span class="status-pill" id="statusPill">核對中…</span>
+      </div>
+      <div class="lc-body" id="ledgerBody">
+        <div class="lc-row debit"><span>Invoice #A-1042</span><span class="amt">4,280.00</span></div>
+        <div class="lc-row"><span>銀行入帳 07/03</span><span class="amt">4,280.00</span></div>
+        <div class="lc-row debit"><span>Invoice #A-1043</span><span class="amt">1,150.00</span></div>
+        <div class="lc-row"><span>銀行入帳 07/05</span><span class="amt">1,150.00</span></div>
+      </div>
+      <div class="lc-foot">
+        <span class="label">差額 Outstanding</span>
+        <span class="value mono" id="lcValue">0.00</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== PAIN POINTS ===== -->
+<section class="pain rule-top" id="pain">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">日常困境</div>
+      <h2>這些狀況，是不是每個月都在發生？</h2>
+      <p>如果你的答案是「對」，代表你需要的不是更努力，而是一套真正分擔工作的系統。</p>
+    </div>
+    <div class="pain-grid">
+      <div class="pain-item"><span class="rowno">01</span><p>每天重複輸入同樣的資料，時間都花在打字上。</p></div>
+      <div class="pain-item"><span class="rowno">02</span><p>Excel 版本一多就對不起來，還常被別人改壞。</p></div>
+      <div class="pain-item"><span class="rowno">03</span><p>月底結帳要加班到深夜，隔天還要繼續上班。</p></div>
+      <div class="pain-item"><span class="rowno">04</span><p>銀行對帳一筆一筆核對，漏帳了也很難第一時間發現。</p></div>
+      <div class="pain-item"><span class="rowno">05</span><p>老闆臨時要報表，數字卻散落在不同檔案裡。</p></div>
+      <div class="pain-item"><span class="rowno">06</span><p>新人上手要好幾週，交接資料也交接得不完整。</p></div>
+    </div>
+    <p class="pain-punch">SQL Accounting 把這六件事，變成系統自動完成的日常。</p>
+  </div>
+</section>
+
+<!-- ===== SOLUTION ===== -->
+<section class="solution" id="solution">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">解決方案</div>
+      <h2>同一份帳，兩種做法</h2>
+      <p>把你現在的工作流程，換成系統幫你跑完前半段。</p>
+    </div>
+    <div class="compare">
+      <div class="compare-col old">
+        <h3>用 Excel 做帳</h3>
+        <div class="flow-step"><span class="mk">1</span>手動輸入每一筆單據</div>
+        <div class="flow-step"><span class="mk">2</span>逐筆核對銀行對帳單</div>
+        <div class="flow-step"><span class="mk">3</span>發現不平，重新檢查一次</div>
+        <div class="flow-step"><span class="mk">4</span>手動彙整報表格式</div>
+        <div class="flow-step"><span class="mk">5</span>月底加班，等老闆確認</div>
+      </div>
+      <div class="compare-col new">
+        <h3>用 SQL Accounting</h3>
+        <div class="flow-step"><span class="mk">✓</span>開單同步建立會計分錄</div>
+        <div class="flow-step"><span class="mk">✓</span>系統自動比對銀行流水</div>
+        <div class="flow-step"><span class="mk">✓</span>差額即時標示，當天處理</div>
+        <div class="flow-step"><span class="mk">✓</span>報表一鍵產出</div>
+        <div class="flow-step"><span class="mk">✓</span>準時下班，老闆隨時看得到</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FEATURES ===== -->
+<section class="features" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">產品特色</div>
+      <h2>做帳需要的功能，一套系統裝好裝滿</h2>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card"><span class="fnum">FT.01</span><div><h4>Invoice / Quotation</h4><p>快速建立發票、報價單與送貨單，開單即入帳。</p></div></div>
+      <div class="feature-card"><span class="fnum">FT.02</span><div><h4>收付款管理</h4><p>AR / AP 一目瞭然，Outstanding 到期自動提醒。</p></div></div>
+      <div class="feature-card"><span class="fnum">FT.03</span><div><h4>銀行對帳</h4><p>匯入對帳單自動比對，差額即時標示不用逐筆找。</p></div></div>
+      <div class="feature-card"><span class="fnum">FT.04</span><div><h4>庫存同步</h4><p>Inventory 與會計分錄同步更新，不用兩邊對。</p></div></div>
+      <div class="feature-card"><span class="fnum">FT.05</span><div><h4>即時財務報表</h4><p>損益表、資產負債表即時產出，隨時拉得出數字。</p></div></div>
+      <div class="feature-card"><span class="fnum">FT.06</span><div><h4>多人協作</h4><p>多帳號同時作業，權限分工不互相干擾。</p></div></div>
+      <div class="feature-card"><span class="fnum">FT.07</span><div><h4>Audit Trail</h4><p>完整操作紀錄，查核有依據，交接更清楚。</p></div></div>
+      <div class="feature-card"><span class="fnum">FT.08</span><div><h4>自動備份</h4><p>重要帳務資料定期備份，不怕檔案毀損遺失。</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== BENEFITS ===== -->
+<section class="benefits" id="benefits">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">實際成果</div>
+      <h2>用了之後，你的一天會這樣改變</h2>
+    </div>
+    <div class="benefit-grid">
+      <div class="benefit-item"><div class="num">-60%</div><h4>重複輸入時間</h4><p>資料一次建立，各報表同步更新。</p></div>
+      <div class="benefit-item"><div class="num">-1天</div><h4>月底結帳天數</h4><p>從三天結帳縮短到一天內完成。</p></div>
+      <div class="benefit-item"><div class="num">即時</div><h4>老闆要報表</h4><p>不用臨時彙整，隨時一鍵拉出。</p></div>
+      <div class="benefit-item"><div class="num">0</div><h4>版本混亂</h4><p>單一系統、單一數據來源，不再對錯版本。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== WHY US ===== -->
+<section class="whyus" id="whyus">
+  <div class="wrap why-grid">
+    <div>
+      <div class="section-head">
+        <div class="eyebrow">為什麼選 SQL Accounting</div>
+        <h2>不是換一套系統，<br>是換一種下班時間</h2>
+      </div>
+      <div class="why-list">
+        <div class="item"><span class="check">✓</span><div><h4>操作簡單，新手也能快速上手</h4><p>介面貼近日常記帳習慣，1-2 天即可獨立作業。</p></div></div>
+        <div class="item"><span class="check">✓</span><div><h4>功能完整，不用另外拼湊工具</h4><p>從開單到報表，一套系統處理到底。</p></div></div>
+        <div class="item"><span class="check">✓</span><div><h4>即時財務分析</h4><p>報表即時更新，決策不用等結帳完才知道。</p></div></div>
+        <div class="item"><span class="check">✓</span><div><h4>專業技術支援</h4><p>導入與使用期間都有專人協助處理問題。</p></div></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="big">3,000+</div>
+      <div class="cap">企業與會計團隊使用中</div>
+      <p class="quote">以前月底結帳至少花三天，現在一天內就能完成，終於不用天天加班。</p>
+      <p class="quote-by">— ACCOUNT CLERK, 貿易業</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== TESTIMONIALS ===== -->
+<section class="testi">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">客戶怎麼說</div>
+      <h2>真正在做帳的人怎麼評價</h2>
+    </div>
+    <div class="testi-grid">
+      <div class="testi-card">
+        <div class="stars">★★★★★</div>
+        <p>銀行對帳的時間明顯變短，每天至少省下一小時,不用再一筆一筆對。</p>
+        <div class="testi-who">ACCOUNT CLERK · 製造業</div>
+      </div>
+      <div class="testi-card">
+        <div class="stars">★★★★★</div>
+        <p>老闆現在隨時能看到最新報表，我不用再臨時彙整 Excel 給他。</p>
+        <div class="testi-who">ACCOUNT CLERK · 零售連鎖</div>
+      </div>
+      <div class="testi-card">
+        <div class="stars">★★★★★</div>
+        <p>介面比想像中好上手，交接給新同事只花了兩天。</p>
+        <div class="testi-who">ACCOUNT CLERK · 服務業</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FAQ ===== -->
+<section class="faq" id="faq">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="eyebrow">常見問題</div>
+      <h2>決定前，你可能想先知道</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item">
+        <div class="faq-q"><span>需要多久才能上手？</span><span class="plus">+</span></div>
+        <div class="faq-a"><div class="faq-a-inner">介面貼近日常記帳流程，一般 Account Clerk 1-2 天即可獨立操作，我們也提供教學協助上手。</div></div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q"><span>舊的 Excel 或系統資料可以匯入嗎？</span><span class="plus">+</span></div>
+        <div class="faq-a"><div class="faq-a-inner">可以，我們提供資料匯入協助，將既有帳目與客戶資料轉入新系統，不用從零建檔。</div></div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q"><span>可以多人同時使用嗎？</span><span class="plus">+</span></div>
+        <div class="faq-a"><div class="faq-a-inner">可以，支援多帳號同時作業，並可依角色設定不同操作權限。</div></div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q"><span>資料安全性如何保障？</span><span class="plus">+</span></div>
+        <div class="faq-a"><div class="faq-a-inner">系統提供定期自動備份與完整操作紀錄（Audit Trail），方便查核與復原。</div></div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q"><span>可以先試用再決定嗎？</span><span class="plus">+</span></div>
+        <div class="faq-a"><div class="faq-a-inner">可以，歡迎預約免費 Demo，實際操作看看是否符合你的日常工作流程。</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FINAL CTA ===== -->
+<section class="final-cta" id="cta">
+  <div class="wrap">
+    <h2>別讓帳務拖住你的下班時間</h2>
+    <p>現在預約 Demo，看看 SQL Accounting 怎麼幫你把每天的做帳工作簡化。</p>
+    <div class="cta-row">
+      <a href="#" class="btn-primary">免費預約 Demo</a>
+      <a href="#" class="btn-ghost">WhatsApp 諮詢</a>
+    </div>
+    <div class="fine">無需信用卡・5 分鐘完成預約</div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap footer-row">
+    <div>© 2026 SQL Accounting. All rights reserved.</div>
+    <div class="footer-links">
+      <a href="#">服務條款</a>
+      <a href="#">隱私權政策</a>
+      <a href="#">聯絡我們</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // FAQ accordion
+  document.querySelectorAll('.faq-q').forEach(function(q){
+    q.addEventListener('click', function(){
+      var item = q.parentElement;
+      var wasOpen = item.classList.contains('open');
+      document.querySelectorAll('.faq-item').forEach(function(i){ i.classList.remove('open'); });
+      if(!wasOpen){ item.classList.add('open'); }
+    });
+  });
+
+  // Ledger reconciliation signature animation:
+  // cycles the widget between "reconciling" and "balanced" state.
+  var pill = document.getElementById('statusPill');
+  var value = document.getElementById('lcValue');
+  var balanced = true;
+  function toggleState(){
+    balanced = !balanced;
+    if(balanced){
+      pill.textContent = '✓ 已對平';
+      pill.style.background = '#E9F0E9';
+      pill.style.color = '#3E6B4F';
+      value.textContent = '0.00';
+      value.classList.add('zero');
+    } else {
+      pill.textContent = '核對中…';
+      pill.style.background = '#F2EEE3';
+      pill.style.color = '#5B6058';
+      value.textContent = '0.00';
+    }
+  }
+  setInterval(toggleState, 2600);
+</script>
+
+</body>
+</html>
